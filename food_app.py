@@ -68,9 +68,15 @@ def is_open_now(opening_hours):
     for period in opening_hours['periods']:
         if period['open']['day'] == current_day:
             open_time = int(period['open']['time'][:2]) * 60 + int(period['open']['time'][2:])
-            close_time = int(period['close']['time'][:2]) * 60 + int(period['close']['time'][2:])
-            if open_time <= current_minutes < close_time:
-                return "Open"
+            # Check if 'close' key exists
+            if 'close' in period:
+                close_time = int(period['close']['time'][:2]) * 60 + int(period['close']['time'][2:])
+                if open_time <= current_minutes < close_time:
+                    return "Open"
+            else:
+                # If no 'close' time, assume it's open if current time is past opening time
+                if current_minutes >= open_time:
+                    return "Open"
     return "Closed"
 
 @st.cache_resource
@@ -137,20 +143,24 @@ def main():
                     place_data = []
                     place_details = {}
                     for place in places:
-                        details = get_place_details(place['place_id'])
-                        place_details[place['place_id']] = details
-                        distance = calculate_distance((lat, lng), (place['geometry']['location']['lat'], place['geometry']['location']['lng']))
-                        open_status = is_open_now(details.get('opening_hours', {}))
-                        place_data.append({
-                            'Name': place['name'],
-                            'Rating': details.get('rating', 'N/A'),
-                            'Price Level': '$' * details.get('price_level', 0) or 'N/A',
-                            'Type': ', '.join(details.get('types', [])) or 'N/A',
-                            'Distance': distance,
-                            'Open Now': open_status,
-                            'Place ID': place['place_id'],
-                            'Number of Reviews': details.get('user_ratings_total', 0)
-                        })
+                        try:
+                            details = get_place_details(place['place_id'])
+                            place_details[place['place_id']] = details
+                            distance = calculate_distance((lat, lng), (place['geometry']['location']['lat'], place['geometry']['location']['lng']))
+                            open_status = is_open_now(details.get('opening_hours', {}))
+                            place_data.append({
+                                'Name': place['name'],
+                                'Rating': details.get('rating', 'N/A'),
+                                'Price Level': '$' * details.get('price_level', 0) or 'N/A',
+                                'Type': ', '.join(details.get('types', [])) or 'N/A',
+                                'Distance': distance,
+                                'Open Now': open_status,
+                                'Place ID': place['place_id'],
+                                'Number of Reviews': details.get('user_ratings_total', 0)
+                            })
+                        except Exception as e:
+                            st.error(f"Error processing place {place['name']}: {str(e)}")
+                            continue
                     
                     df = pd.DataFrame(place_data).drop_duplicates(subset=['Name', 'Distance'], keep='first')
                     
